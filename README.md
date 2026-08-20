@@ -30,7 +30,7 @@ Then push it to Desktop's built-in registry and apply the manifest:
 ```sh
 SOCK="$COSMONIC_STATE_DIR/cosmonicd.sock"     # `cosmonicd paths` prints it
 
-wash oci push --insecure oci.localhost:8200/notify-playground:0.1.0 \
+wash oci push --insecure oci.localhost:8200/notify-playground:0.1.1 \
   target/wasm32-wasip2/release/notify_playground.wasm
 
 curl --unix-socket "$SOCK" -X POST -H 'content-type: application/json' \

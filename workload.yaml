@@ -23,7 +23,7 @@ spec:
 
   components:
     - name: notify-playground
-      image: oci.localhost:8298/notify-playground:0.1.0
+      image: oci.localhost:8298/notify-playground:0.1.1
       localResources:
         # The playground dials nothing. Deny-all is both the default and the
         # honest posture for a sample.

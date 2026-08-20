@@ -14,7 +14,7 @@ metadata:
   namespace: default
   labels:
     app.kubernetes.io/name: notify-playground
-    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/version: "0.1.1"
 spec:
   hostInterfaces:
     # Inbound HTTP. Must be first — the router takes its ingress hostnames from
@@ -37,7 +37,7 @@ spec:
 
   components:
     - name: notify-playground
-      image: ghcr.io/cosmonic-labs/notify-playground/notify-playground:0.1.0
+      image: ghcr.io/cosmonic-labs/notify-playground/notify-playground:0.1.1
       localResources:
         # The playground dials nothing. `allowedHosts` is fail-closed — an
         # empty list is deny-all, and that is the honest posture for a sample
