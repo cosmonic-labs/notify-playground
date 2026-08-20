@@ -74,6 +74,9 @@ interface types {
     /// Auto-dismiss hint in ms. `none` = the host default. Also bounds how
     /// long `request` will block. Best-effort: some platforms ignore it, in
     /// which case the host still synthesizes `expired` at the deadline.
+    /// `0` is treated the same as `none` (following the freedesktop
+    /// convention where zero means "don't expire on your own") — the host
+    /// still applies its default deadline, never "expire immediately".
     timeout-ms: option<u32>,
   }
 

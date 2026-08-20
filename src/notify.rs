@@ -191,12 +191,13 @@ pub fn close_json(raw: &str) -> (u16, String) {
     }
 }
 
-/// `events.pull()` — drain the responses queued for THIS COMPONENT.
+/// `events.pull()` — drain the responses queued for THIS WORKLOAD.
 ///
-/// The queue is per component, not per instance, which is what makes `post`
+/// The queue is per workload, not per instance, which is what makes `post`
 /// usable at all from a request-scoped component like this one: the invocation
 /// that posted is long gone by the time the user clicks, and this invocation
-/// picks the answer up. `0` means "poll, do not block".
+/// picks the answer up. (Components of one multi-component workload share the
+/// queue.) `0` means "poll, do not block".
 pub fn events_json() -> String {
     match events::pull(0) {
         Ok(list) => {
@@ -251,7 +252,12 @@ fn describe(e: &t::NotifyError) -> String {
             "denied — notifications are revoked for this component in Settings → Notifications"
                 .into()
         }
-        t::NotifyError::Throttled => "throttled — too many notifications too quickly".into(),
+        t::NotifyError::Throttled => {
+            // v1 never rejects on rate; this is the in-flight cap — a resource
+            // bound on unanswered notifications, not a speed limit.
+            "throttled — too many unanswered notifications in flight; answer or close some first"
+                .into()
+        }
         t::NotifyError::Unavailable => {
             "unavailable — this machine cannot show notifications right now. Check \
              /capabilities for the reason (headless session, macOS authorization, or a \

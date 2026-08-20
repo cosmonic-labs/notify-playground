@@ -147,6 +147,14 @@
           <code>urgent</code> toast scenario and <code>low</code> to silent; macOS has no real
           equivalent, so <code>capabilities().urgency</code> is <code>false</code> there and the
           host drops it rather than pretending.
+          <br><br>
+          The urgency <em>lesson</em>, learned on GNOME: a non-critical notification is
+          <b>settled the moment its banner fades</b> — a few seconds in, reason
+          "expired", and a click on whatever remains in the tray goes nowhere. If you are
+          asking a question (buttons, reply), send it as <code>critical</code> so it stays
+          on screen until answered; <code>normal</code> is for information. And
+          <code>timeout-ms: 0</code> means the host default, never "expire immediately" —
+          the freedesktop convention.
         </div>
       </div>
 
