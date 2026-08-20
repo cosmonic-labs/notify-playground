@@ -95,7 +95,9 @@ interface types {
   }
 
   variant notify-error {
-    /// Notifications are revoked for this component in Desktop settings.
+    /// Not permitted. Either notifications are revoked for this workload in
+    /// Desktop settings, or the host could not establish who is calling —
+    /// which happens if a component calls after its own workload stopped.
     denied,
     /// Rate limit exceeded. Reserved — v1 counts and warns, never rejects.
     throttled,
