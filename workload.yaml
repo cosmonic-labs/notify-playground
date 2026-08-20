@@ -1,0 +1,30 @@
+# Local iteration manifest. `deploy/workload.yaml` is the published one.
+apiVersion: runtime.wasmcloud.dev/v1alpha1
+kind: Workload
+metadata:
+  name: notify-playground
+  namespace: default
+spec:
+  hostInterfaces:
+    # Inbound HTTP. Must come first — the router takes ingress hostnames from
+    # the first wasi:http entry.
+    - namespace: wasi
+      package: http
+      interfaces: [incoming-handler]
+      config:
+        host: notify.localhost
+
+    # This is the whole ask: declare cosmonic:notify and the host plugin binds
+    # it. Nothing to install, no config, no secret.
+    - namespace: cosmonic
+      package: notify
+      version: "0.1.0"
+      interfaces: [notifier, events, types]
+
+  components:
+    - name: notify-playground
+      image: oci.localhost:8298/notify-playground:0.1.0
+      localResources:
+        # The playground dials nothing. Deny-all is both the default and the
+        # honest posture for a sample.
+        allowedHosts: []

@@ -1,0 +1,12 @@
+// The playground is a P2 HTTP component that also imports `cosmonic:notify`.
+//
+// The HTTP export comes from the `wasmcloud-component` crate's own macro, so
+// this world declares only what we generate bindings for by hand: the notify
+// imports. Keeping them in a separate world is what lets the two macros
+// coexist without fighting over the same generated module.
+package cosmonic:notify-playground;
+
+world playground {
+  import cosmonic:notify/notifier@0.1.0;
+  import cosmonic:notify/events@0.1.0;
+}

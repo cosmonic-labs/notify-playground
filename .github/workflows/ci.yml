@@ -1,0 +1,67 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build (wasm32-wasip2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --target wasm32-wasip2 --all-targets --locked -- -D warnings
+      - run: cargo build --target wasm32-wasip2 --release --locked
+      # The component is only useful if it actually imports the interface it
+      # claims to. Assert the imports rather than trusting that it compiled.
+      - name: verify the component imports cosmonic:notify
+        run: |
+          curl -sSfL https://github.com/bytecodealliance/wasm-tools/releases/download/v1.235.0/wasm-tools-1.235.0-x86_64-linux.tar.gz \
+            | tar xz --strip-components=1 -C /usr/local/bin wasm-tools-1.235.0-x86_64-linux/wasm-tools
+          WIT=$(wasm-tools component wit target/wasm32-wasip2/release/notify_playground.wasm)
+          echo "$WIT" | grep -q 'import cosmonic:notify/notifier@0.1.0' || { echo "::error::notifier import missing"; exit 1; }
+          echo "$WIT" | grep -q 'import cosmonic:notify/events@0.1.0'   || { echo "::error::events import missing"; exit 1; }
+          echo "$WIT" | grep -q 'export wasi:http/incoming-handler'      || { echo "::error::http export missing"; exit 1; }
+          echo "imports verified"
+
+  manifests:
+    name: manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: the published manifest must match the crate version
+        run: |
+          VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          grep -q ":${VERSION}\"*$" deploy/workload.yaml \
+            || grep -q ":${VERSION}$" deploy/workload.yaml \
+            || { echo "::error::deploy/workload.yaml does not reference version ${VERSION}"; exit 1; }
+          echo "deploy manifest is on ${VERSION}"
+      - name: both manifests must parse
+        run: |
+          python3 -c "import yaml,sys; [yaml.safe_load(open(p)) for p in ('workload.yaml','deploy/workload.yaml')]"
+      - name: the sample must not quietly widen egress
+        run: |
+          # A sample that ships a non-empty allowedHosts teaches the wrong
+          # lesson. It talks to nobody; keep it that way.
+          python3 - <<'PY'
+          import yaml
+          for p in ("workload.yaml", "deploy/workload.yaml"):
+              spec = yaml.safe_load(open(p))["spec"]
+              for c in spec["components"]:
+                  hosts = (c.get("localResources") or {}).get("allowedHosts")
+                  assert hosts == [], f"{p}: allowedHosts must be [] (deny-all), got {hosts!r}"
+          print("egress is deny-all in both manifests")
+          PY

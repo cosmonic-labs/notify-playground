@@ -1,0 +1,49 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+      - uses: Swatinem/rust-cache@v2
+
+      # Refuse to publish a tag that disagrees with the source. Three places
+      # carry the version and all three must say the same thing, checked BEFORE
+      # anything is pushed — a mismatched image tag is not recallable.
+      - name: version triple-check
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          CARGO=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          [ "$TAG" = "$CARGO" ] || { echo "::error::tag $TAG != Cargo.toml $CARGO"; exit 1; }
+          grep -q ":${TAG}$" deploy/workload.yaml || { echo "::error::deploy/workload.yaml is not on $TAG"; exit 1; }
+          echo "version $TAG agrees everywhere"
+
+      - run: cargo build --target wasm32-wasip2 --release --locked
+
+      - name: push to ghcr
+        run: |
+          curl -sSfL https://github.com/bytecodealliance/wash/releases/latest/download/wash-x86_64-unknown-linux-gnu.tar.gz \
+            | tar xz -C /usr/local/bin || true
+          echo "${{ secrets.GITHUB_TOKEN }}" | wash oci push --help >/dev/null 2>&1 || true
+          # Repo-namespaced on purpose: org-level package-name collisions are a
+          # hard 403, and this repo owns its own package path.
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY}/notify-playground:${GITHUB_REF_NAME#v}"
+          echo "pushing $IMAGE"
+          wash oci push "$IMAGE" target/wasm32-wasip2/release/notify_playground.wasm
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: target/wasm32-wasip2/release/notify_playground.wasm
+          generate_release_notes: true

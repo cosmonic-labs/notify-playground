@@ -1,0 +1,45 @@
+# Published manifest — the one to `curl` straight onto a Cosmonic Desktop host.
+#
+#   curl --unix-socket "$COSMONIC_STATE_DIR/cosmonicd.sock" \
+#     -X POST -H 'content-type: application/json' \
+#     --data-binary @<(yq -o=json deploy/workload.yaml) \
+#     http://localhost/v1/workloads
+#
+# …or paste it into Desktop's Run screen. Use ../workload.yaml instead when
+# iterating on a locally built component.
+apiVersion: runtime.wasmcloud.dev/v1alpha1
+kind: Workload
+metadata:
+  name: notify-playground
+  namespace: default
+  labels:
+    app.kubernetes.io/name: notify-playground
+    app.kubernetes.io/version: "0.1.0"
+spec:
+  hostInterfaces:
+    # Inbound HTTP. Must be first — the router takes its ingress hostnames from
+    # the first `wasi:http` entry, and a Workload gets one HTTP entrypoint.
+    - namespace: wasi
+      package: http
+      interfaces: [incoming-handler]
+      config:
+        host: notify.localhost.cosmonic.sh
+        host-aliases: notify.localhost
+
+    # This one line is the entire ask. Declaring `cosmonic:notify` is what makes
+    # the host plugin bind the interface to this component — there is nothing to
+    # install, no config, and no secret. A component that does NOT declare it
+    # cannot notify at all.
+    - namespace: cosmonic
+      package: notify
+      version: "0.1.0"
+      interfaces: [notifier, events, types]
+
+  components:
+    - name: notify-playground
+      image: ghcr.io/cosmonic-labs/notify-playground/notify-playground:0.1.0
+      localResources:
+        # The playground dials nothing. `allowedHosts` is fail-closed — an
+        # empty list is deny-all, and that is the honest posture for a sample
+        # that only needs to talk to the host it already runs on.
+        allowedHosts: []

@@ -1,0 +1,201 @@
+// cosmonic:notify — OS-native notifications and calls-to-action for
+// WebAssembly components. Design: `docs/NOTIFY.md`.
+//
+// A component imports `notifier` to raise a toast and `events` to collect the
+// user's answer. The host (cosmonicd) satisfies both, translating the
+// platform-neutral `notification` record into the native surface for the
+// machine it runs on — WinRT toasts, `UNUserNotificationCenter` alerts, or
+// freedesktop D-Bus notifications — and pumping the user's response back.
+//
+// Three things are deliberately NOT the component's problem:
+//   * WHICH backend runs. Routing is host configuration (`notify.yaml`), so a
+//     non-OS channel can be added without touching this package.
+//   * WHETHER the platform can honour every field. `capabilities` reports the
+//     truth and the host degrades gracefully (see `docs/NOTIFY.md` §5.5).
+//   * ATTRIBUTION. The host stamps "who is talking" itself; a component cannot
+//     impersonate another component or the product.
+//
+// Every notification resolves to EXACTLY ONE terminal `response`. That
+// invariant is owned by the host service, not by any backend, so it holds even
+// when one notification is fanned out to several channels.
+package cosmonic:notify@0.1.0;
+
+interface types {
+  /// What happens when the user activates an action (or the notification body).
+  variant action-target {
+    /// Focus/launch Cosmonic Desktop at an app route, e.g.
+    /// "workloads/default/checkout". The host opens `cosmonic://<route>`.
+    /// The route MUST be relative — no scheme, host, `..`, or leading `//`.
+    deep-link(string),
+    /// Open a URL in the default browser. The host accepts `http`/`https`
+    /// only; anything else is rejected with `notify-error::invalid`.
+    url(string),
+    /// Take no host-side action — just deliver the response back to the
+    /// sending component (via `request`'s return value or `events.pull`).
+    callback,
+  }
+
+  record action {
+    /// Stable id echoed back in `response::action`. Must be non-empty and
+    /// unique within one notification.
+    id: string,
+    /// Button label shown to the user.
+    label: string,
+    target: action-target,
+  }
+
+  /// Inline text reply. Platforms without inline reply degrade to an ordinary
+  /// button carrying the same id (see `platform-capabilities::inline-reply`).
+  record text-input {
+    id: string,
+    /// Button label, e.g. "Reply".
+    label: string,
+    placeholder: option<string>,
+  }
+
+  enum urgency { low, normal, critical }
+
+  record notification {
+    /// Required, non-empty after trimming.
+    title: string,
+    body: string,
+    urgency: urgency,
+    /// Truncated to `platform-capabilities::max-actions` (and to 8 in any
+    /// case); the host logs what it dropped rather than failing the call.
+    actions: list<action>,
+    input: option<text-input>,
+    /// What clicking the notification body does. `none` = the host's default,
+    /// a deep-link to the sending workload's page in Desktop.
+    default-target: option<action-target>,
+    /// Reusing a tag REPLACES your prior notification with the same tag, in
+    /// place. Scoped per workload — one workload can never overwrite
+    /// another's toast.
+    tag: option<string>,
+    /// Auto-dismiss hint in ms. `none` = the host default. Also bounds how
+    /// long `request` will block. Best-effort: some platforms ignore it, in
+    /// which case the host still synthesizes `expired` at the deadline.
+    timeout-ms: option<u32>,
+  }
+
+  type notification-id = u64;
+
+  variant response {
+    /// The user clicked the notification body.
+    activated,
+    /// The user clicked a button; payload = the action id.
+    action(string),
+    /// The user submitted inline text: (input id, text).
+    reply(tuple<string, string>),
+    /// The user explicitly dismissed it.
+    dismissed,
+    /// Timed out, was cleared without interaction, or was withdrawn with
+    /// `close`. Also what a component receives for anything still in flight
+    /// when the host shuts down.
+    expired,
+  }
+
+  variant notify-error {
+    /// Notifications are revoked for this component in Desktop settings.
+    denied,
+    /// Rate limit exceeded. Reserved — v1 counts and warns, never rejects.
+    throttled,
+    /// No notification service is reachable: a headless Linux session, macOS
+    /// authorization refused, or a daemon with no bundle identity.
+    /// `capabilities().available` reports this ahead of time.
+    unavailable,
+    /// Malformed request — empty title, duplicate action id, non-http URL,
+    /// absolute or traversing deep-link route.
+    invalid(string),
+    /// Backend/platform failure, with detail.
+    platform(string),
+  }
+
+  record platform-capabilities {
+    /// False when nothing can be displayed at all. Every `post`/`request` will
+    /// return `unavailable`; check this instead of discovering it per-call.
+    available: bool,
+    /// Stable key of the primary backend: "os", "mock", or "none".
+    /// With multi-route fan-out this describes the PRIMARY route only.
+    backend: string,
+    actions: bool,
+    inline-reply: bool,
+    urgency: bool,
+    /// Notifications persist in a system tray/center after display.
+    persistent: bool,
+    max-actions: u8,
+  }
+}
+
+/// Raising notifications.
+interface notifier {
+  use types.{notification, notification-id, response, notify-error,
+             platform-capabilities};
+
+  /// What this host/platform/session can actually do, right now. Cheap and
+  /// side-effect free; safe to call on every invocation.
+  capabilities: func() -> platform-capabilities;
+
+  /// Fire-and-forget. Returns as soon as the notification is handed to the
+  /// backend. The user's answer arrives later via `events.pull`.
+  post: func(n: notification) -> result<notification-id, notify-error>;
+
+  /// Raise the notification and WAIT for the user's terminal response.
+  ///
+  /// Returns exactly once, with `activated`, `action`, `reply`, `dismissed`,
+  /// or `expired`. The wait is bounded by `notification.timeout-ms`, else the
+  /// host's configured default, and in all cases by a host ceiling — a
+  /// component can never block forever on a user who walked away.
+  ///
+  /// Note: this is a plain blocking call rather than `future<response>`
+  /// deliberately, so that P2 guests in every language can use it. See
+  /// `docs/NOTIFY.md` §3.1.
+  request: func(n: notification) -> result<response, notify-error>;
+
+  /// Withdraw a notification this component posted. The pending response
+  /// resolves as `expired`. Withdrawing an unknown or already-terminal id is
+  /// a no-op, not an error.
+  close: func(id: notification-id) -> result<_, notify-error>;
+}
+
+/// Collecting responses to `post`ed notifications.
+///
+/// The queue is per WORKLOAD, not per component instance, so a response to a
+/// notification raised by one invocation can be drained by the next — the only
+/// thing that works for request-scoped components, where the invocation that
+/// posted is gone long before anyone clicks.
+///
+/// Workload rather than component because the host has no stable component
+/// *name* to key on — only a per-instance id that changes on restart. The
+/// consequence: components of the same multi-component workload share one
+/// queue, one rate budget, and one entry in Settings.
+interface events {
+  use types.{notification-id, response, notify-error};
+
+  record event {
+    id: notification-id,
+    response: response,
+  }
+
+  /// Drain this component's pending responses.
+  ///
+  /// Returns as soon as at least one event is queued, or an empty list once
+  /// `max-wait-ms` elapses. `max-wait-ms` of 0 polls without blocking. The
+  /// host bounds the wait regardless of what is asked for.
+  ///
+  /// Events are delivered at-most-once: what this call returns is removed from
+  /// the queue. The queue is bounded — a component that never drains it will
+  /// lose its OLDEST events first (the host logs the overflow).
+  pull: func(max-wait-ms: u32) -> result<list<event>, notify-error>;
+}
+
+/// What a component imports to raise notifications and read the answers.
+world notify-consumer {
+  import notifier;
+  import events;
+}
+
+/// What the host exports to satisfy `notify-consumer`.
+world host {
+  export notifier;
+  export events;
+}
