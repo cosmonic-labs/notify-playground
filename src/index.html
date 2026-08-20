@@ -95,6 +95,12 @@
   .dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--muted); }
   .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); }
   a { color: var(--accent-2); }
+  .menu-group { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .mg-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; min-width: 92px; flex: none; }
+  .routes { width: 100%; border-collapse: collapse; font-size: 13px; margin: 4px 0 2px; }
+  .routes th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11.5px;
+               text-transform: uppercase; letter-spacing: .05em; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+  .routes td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: baseline; }
 </style>
 </head>
 <body>
@@ -255,6 +261,67 @@
       </div>
     </div>
   </div>
+
+  <div class="card" style="margin-top:20px">
+    <h2>calling back into cosmonic — the target menu</h2>
+    <p class="sub" style="font-size:13px;margin:0 0 10px">
+      Every button (and the notification body) carries an <code>action-target</code>. A
+      <code>deep-link</code> reopens Cosmonic Desktop at an app route — the host opens
+      <code>cosmonic://navigate/&lt;route&gt;</code>, and the app acts only on routes it
+      recognises; anything else just focuses the window (fail closed, on top of the daemon's
+      own validation). Each button here fires one toast exercising exactly one target kind:
+      act on the <i>toast</i>, then watch the feed.
+    </p>
+    <table class="routes">
+      <thead><tr><th>deep-link route</th><th>opens</th><th></th></tr></thead>
+      <tbody>
+        <tr><td><code>workloads/&lt;ns&gt;/&lt;name&gt;</code></td>
+            <td>Workloads, with that workload revealed — scrolled to and flashed</td>
+            <td><button class="ghost small" data-test="dl-this">toast it</button></td></tr>
+        <tr><td><code>settings</code></td>
+            <td>Settings — where you'd send someone after a <code>denied</code></td>
+            <td><button class="ghost small" data-test="dl-settings">toast it</button></td></tr>
+        <tr><td><code>settings-updates</code></td>
+            <td>Settings, opened on the Updates section (one route name — not nested)</td>
+            <td><button class="ghost small" data-test="dl-updates">toast it</button></td></tr>
+        <tr><td><code>logs</code></td>
+            <td>The Logs screen</td>
+            <td><button class="ghost small" data-test="dl-logs">toast it</button></td></tr>
+        <tr><td><code>academy/&lt;cat&gt;/&lt;lesson&gt;</code></td>
+            <td>An Academy lesson (an unknown path just opens Academy)</td>
+            <td><button class="ghost small" data-test="dl-academy">toast it</button></td></tr>
+        <tr><td><code>launchpad/&lt;cat&gt;/&lt;entry&gt;</code></td>
+            <td>Launchpad, with that entry highlighted</td>
+            <td><button class="ghost small" data-test="dl-launchpad">toast it</button></td></tr>
+      </tbody>
+    </table>
+    <div class="menu-group"><span class="mg-label">url</span>
+      <button class="ghost small" data-test="url-site">open cosmonic.com</button>
+      <button class="ghost small" data-test="url-repo">open the desktop repo</button>
+    </div>
+    <div class="menu-group"><span class="mg-label">body click</span>
+      <button class="ghost small" data-test="body-default">host default (blank)</button>
+      <button class="ghost small" data-test="body-settings">→ settings</button>
+      <button class="ghost small" data-test="body-url">→ a URL</button>
+      <button class="ghost small" data-test="body-callback">→ callback only</button>
+    </div>
+    <div class="menu-group"><span class="mg-label">refused</span>
+      <button class="ghost small" data-test="bad-js">javascript: url</button>
+      <button class="ghost small" data-test="bad-scheme">scheme in a deep-link</button>
+      <button class="ghost small" data-test="bad-traversal">../ traversal</button>
+      <button class="ghost small" data-test="bad-absolute">absolute /route</button>
+      <button class="ghost small" data-test="bad-query">route?query</button>
+    </div>
+    <div class="note">
+      <b>The free one:</b> a body click with no explicit <code>default_target</code> gets the
+      host default — a deep-link to <i>this workload's own page</i>
+      (<code>workloads/&lt;ns&gt;/&lt;name&gt;</code>), composed by the host from the workload
+      identity, never from component input. The <b>refused</b> group sends targets the daemon
+      must reject — relative paths only: no scheme, no leading slash, no <code>..</code>, no
+      query or fragment — so nothing is shown at all; the point is watching the refusal land
+      in the feed before a toast ever exists.
+    </div>
+  </div>
 </div>
 
 <script>
@@ -380,6 +447,65 @@ $("close").onclick = async (e) => {
   logEntry(d.error ? "err" : "ok", `<b>close</b> #${lastId}`,
     d.error ? esc(d.error) : "its pending response resolves as expired");
 };
+
+// ---- the target menu ------------------------------------------------------
+// One click, one toast, one target kind. `refused` entries carry a target the
+// daemon must reject — the test PASSES when /post fails with `invalid`.
+const tbtn = (id, label, target, value) => (value === undefined ? { id, label, target } : { id, label, target, value });
+const TARGET_TESTS = {
+  "dl-this":      { req: { title: "Deep link: this workload", body: "The button reveals this workload's row in Desktop.",
+                           actions: [tbtn("open", "Open Cosmonic", "deep-link", "workloads/default/notify-playground")] } },
+  "dl-settings":  { req: { title: "Deep link: settings", body: "Where you'd send someone after a denied error.",
+                           actions: [tbtn("open", "Open Settings", "deep-link", "settings")] } },
+  "dl-updates":   { req: { title: "Deep link: settings-updates", body: "One route name — not nested under settings.",
+                           actions: [tbtn("open", "Open Updates", "deep-link", "settings-updates")] } },
+  "dl-logs":      { req: { title: "Deep link: logs", body: "The right landing for “something went wrong, look here”.",
+                           actions: [tbtn("open", "Open Logs", "deep-link", "logs")] } },
+  "dl-academy":   { req: { title: "Deep link: an Academy lesson", body: "An unknown path just opens Academy.",
+                           actions: [tbtn("open", "Open the lesson", "deep-link", "academy/first-flight/run-your-first-workload")] } },
+  "dl-launchpad": { req: { title: "Deep link: a Launchpad entry", body: "An unknown path just opens Launchpad.",
+                           actions: [tbtn("open", "Open Launchpad", "deep-link", "launchpad/getting-started/first-flight")] } },
+
+  "url-site":     { req: { title: "URL target", body: "The button opens your default browser (http/https only).",
+                           actions: [tbtn("open", "cosmonic.com", "url", "https://cosmonic.com")] } },
+  "url-repo":     { req: { title: "URL target", body: "Straight to the cosmonic/desktop repository.",
+                           actions: [tbtn("open", "Open the repo", "url", "https://github.com/cosmonic/desktop")] } },
+
+  "body-default": { req: { title: "Body click: host default", body: "No default_target set. Click the toast BODY → Desktop opens on this workload's page." } },
+  "body-settings":{ req: { title: "Body click: settings", body: "Click the toast BODY → Desktop opens Settings.",
+                           default_target: { target: "deep-link", value: "settings" } } },
+  "body-url":     { req: { title: "Body click: a URL", body: "Click the toast BODY → your browser opens cosmonic.com.",
+                           default_target: { target: "url", value: "https://cosmonic.com" } } },
+  "body-callback":{ req: { title: "Body click: callback only", body: "Click the toast BODY → nothing opens; the feed just shows activated.",
+                           default_target: { target: "callback" } } },
+
+  "bad-js":       { refused: true, req: { title: "x", actions: [tbtn("a", "A", "url", "javascript:alert(1)")] } },
+  "bad-scheme":   { refused: true, req: { title: "x", actions: [tbtn("a", "A", "deep-link", "cosmonic://navigate/settings")] } },
+  "bad-traversal":{ refused: true, req: { title: "x", actions: [tbtn("a", "A", "deep-link", "../../secrets")] } },
+  "bad-absolute": { refused: true, req: { title: "x", actions: [tbtn("a", "A", "deep-link", "/settings")] } },
+  "bad-query":    { refused: true, req: { title: "x", actions: [tbtn("a", "A", "deep-link", "settings?x=1")] } },
+};
+document.querySelectorAll("[data-test]").forEach((el) => {
+  el.onclick = async () => {
+    const t = TARGET_TESTS[el.dataset.test];
+    try {
+      const r = await fetch("/post", { method: "POST", body: JSON.stringify(t.req) });
+      const d = await r.json();
+      if (t.refused) {
+        if (d.error) logEntry("ok", "<b>refused</b>, as it must be", esc(d.error));
+        else logEntry("err", `#${d.id} was <b>not</b> refused`, "that's a bug — please report it");
+      } else if (d.error) {
+        logEntry("err", "<b>/post</b> refused", esc(d.error));
+      } else {
+        lastId = d.id;
+        $("simId").value = d.id;
+        logEntry("ok", `<b>post</b> → notification <b>#${d.id}</b>`, esc(t.req.title) + " — act on the toast, then watch this feed");
+      }
+    } catch (e) {
+      logEntry("err", "the request failed", esc(e.message));
+    }
+  };
+});
 
 // The control socket is unreachable from here (see the note in the card), so
 // the page builds the command instead of running it.

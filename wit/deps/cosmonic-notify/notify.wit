@@ -24,8 +24,12 @@ interface types {
   /// What happens when the user activates an action (or the notification body).
   variant action-target {
     /// Focus/launch Cosmonic Desktop at an app route, e.g.
-    /// "workloads/default/checkout". The host opens `cosmonic://<route>`.
-    /// The route MUST be relative — no scheme, host, `..`, or leading `//`.
+    /// "workloads/default/checkout". The host opens
+    /// `cosmonic://navigate/<route>`; the app acts only on routes it
+    /// recognises (`workloads/<ns>/<name>`, `settings`, `logs`,
+    /// `academy/...`, `launchpad/...`) and anything else just focuses the
+    /// window. The route MUST be relative — no scheme, host, `..`, or
+    /// leading `//`.
     deep-link(string),
     /// Open a URL in the default browser. The host accepts `http`/`https`
     /// only; anything else is rejected with `notify-error::invalid`.

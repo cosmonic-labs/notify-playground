@@ -84,6 +84,76 @@ daemon with no bundle identity. Check `available` rather than discovering it one
 
 ---
 
+## How do I call back into the Cosmonic product?
+
+Every button (and the notification body) carries an `action-target` saying
+what activating it does. Three kinds:
+
+| Target | What the host does | Use it for |
+|---|---|---|
+| `deep-link` | opens **Cosmonic Desktop** at an app route (`cosmonic://navigate/<route>`) | "show me that workload / setting / lesson" |
+| `url` | opens the default **browser** (http/https only) | release notes, dashboards, docs |
+| `callback` | nothing host-side | the answer just comes back to your component |
+
+### Deep-link routes the app recognises
+
+| Route | Opens |
+|---|---|
+| `workloads/<ns>/<name>` | Workloads, with that workload revealed (scrolled to + flashed) |
+| `settings` | Settings — e.g. where to send someone after a `denied` |
+| `settings-updates` | Settings, opened on the Updates section |
+| `logs` | The Logs screen |
+| `academy/<category>/<lesson>` | An Academy lesson in the reader |
+| `launchpad/<category>/<entry>` | Launchpad, with that entry highlighted |
+
+Anything else — including a route added in a Desktop version your user has
+not installed yet — **fails closed to focusing the window**. Two independent
+layers each do their half: the daemon validates the route's *shape*
+(relative paths only — no scheme, no leading `/`, no `..`, no `?` or `#`;
+violations are `notify-error::invalid` before a toast ever shows), and the
+app whitelists the route's *meaning*.
+
+### The free callback: the toast body
+
+Set no `default_target` and a body click gets the **host default** — a
+deep-link to *your workload's own page* (`workloads/<ns>/<name>`), composed
+by the host from your workload identity. You never hard-code your own name;
+"open the app on me" is what every notification does out of the box. Send
+`"default_target": {"target": "callback"}` if you truly want a body click to
+do nothing host-side.
+
+### Example
+
+Against this playground's `/post` route:
+
+```json
+{
+  "title": "Deploy finished",
+  "body": "checkout 0.3.1 is running",
+  "actions": [
+    { "id": "show",  "label": "Show me",       "target": "deep-link", "value": "workloads/default/checkout" },
+    { "id": "notes", "label": "Release notes", "target": "url",       "value": "https://example.com/notes" },
+    { "id": "ack",   "label": "Dismiss",       "target": "callback" }
+  ]
+}
+```
+
+Or straight from Rust against the WIT bindings (see `src/notify.rs`):
+
+```rust
+Action {
+    id: "show".into(),
+    label: "Show me".into(),
+    target: ActionTarget::DeepLink("workloads/default/checkout".into()),
+}
+```
+
+The page's **"calling back into cosmonic"** card has a one-click probe for
+every route and target kind — including a *refused* group whose invalid
+targets demonstrate the validation.
+
+---
+
 ## Reading the code
 
 ```
