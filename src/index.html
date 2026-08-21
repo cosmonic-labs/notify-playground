@@ -24,7 +24,7 @@
     font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   }
   .wrap { max-width: 1180px; margin: 0 auto; padding: 32px 20px 80px; }
-  header { margin-bottom: 28px; }
+  header { margin-bottom: 22px; }
   h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.02em; }
   h1 code { font-family: var(--mono); font-size: 24px; color: var(--accent); }
   .sub { color: var(--muted); max-width: 70ch; margin: 0; }
@@ -39,6 +39,7 @@
     font-size: 12px; text-transform: uppercase; letter-spacing: 0.09em;
     color: var(--muted); margin: 0 0 14px; font-weight: 600;
   }
+  .card h2 .h2note { text-transform: none; letter-spacing: 0; opacity: .8; font-weight: 500; }
   label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
   input[type=text], textarea, select {
     width: 100%; background: var(--panel-2); color: var(--ink);
@@ -66,26 +67,63 @@
   .chip.on { color: var(--ok); border-color: color-mix(in oklab, var(--ok) 40%, var(--line)); }
   .chip.off { color: var(--muted); }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  /* ---- the message-type buttons ---- */
+  .types { display: grid; grid-template-columns: repeat(auto-fill, minmax(216px, 1fr)); gap: 10px; }
+  .preset {
+    display: flex; align-items: stretch; overflow: hidden;
+    border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2);
+    transition: border-color .12s ease, background .12s ease;
+  }
+  .preset:hover { border-color: color-mix(in oklab, var(--accent-2) 55%, var(--line)); }
+  .preset.active { border-color: var(--accent); background: color-mix(in oklab, var(--accent) 8%, var(--panel-2)); }
+  .preset .p-load {
+    flex: 1; min-width: 0; text-align: left; background: transparent; color: var(--ink);
+    border: 0; padding: 9px 11px; cursor: pointer; font-weight: 400;
+  }
+  .preset .p-load b { display: block; font-weight: 620; font-size: 13.5px; }
+  .preset .p-load span { display: block; font-size: 11.5px; color: var(--muted); line-height: 1.35; margin-top: 2px; }
+  .preset .p-send {
+    flex: none; border: 0; border-left: 1px solid var(--line); background: transparent;
+    color: var(--accent); padding: 0 12px; cursor: pointer; font-size: 13px; font-weight: 700;
+  }
+  .preset .p-send:hover { background: color-mix(in oklab, var(--accent) 14%, transparent); }
+  .preset.refused .p-send { color: var(--warn); }
+  .preset.refused { border-style: dashed; }
+  .grouphead {
+    font-size: 11.5px; color: var(--muted); margin: 16px 0 8px; letter-spacing: .04em;
+  }
+  .grouphead:first-child { margin-top: 0; }
+
   .action-row {
     display: grid; grid-template-columns: 1fr 1fr 110px 1fr auto;
     gap: 8px; margin-bottom: 8px; align-items: center;
   }
   @media (max-width: 700px) { .action-row { grid-template-columns: 1fr; } }
-  .log { font-family: var(--mono); font-size: 12.5px; }
+  .log { font-family: var(--mono); font-size: 12.5px; max-height: 460px; overflow-y: auto; }
   .entry {
     border-left: 2px solid var(--line); padding: 8px 0 8px 12px; margin-bottom: 8px;
   }
   .entry.ok { border-left-color: var(--ok); }
   .entry.err { border-left-color: var(--bad); }
   .entry.rsp { border-left-color: var(--accent-2); }
+  .entry.wait { border-left-color: var(--warn); }
   .entry .t { color: var(--muted); font-size: 11px; }
+  .entry .d { color: var(--muted); }
   .note {
     font-size: 12.5px; color: var(--muted); background: var(--panel-2);
     border: 1px solid var(--line); border-left: 2px solid var(--accent-2);
     border-radius: 6px; padding: 9px 11px; margin-top: 12px;
   }
   .note b { color: var(--ink); font-weight: 600; }
+  .note ol, .note ul { margin: 6px 0 0; padding-left: 18px; }
+  .note li { margin-bottom: 4px; }
   code { font-family: var(--mono); font-size: 0.92em; }
+  pre.wire {
+    font-family: var(--mono); font-size: 11.5px; white-space: pre-wrap; word-break: break-word;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+    padding: 10px; margin: 0; max-height: 210px; overflow: auto; color: var(--ink);
+  }
   .banner {
     border-radius: var(--radius); padding: 12px 14px; margin-bottom: 18px;
     border: 1px solid var(--line); background: var(--panel);
@@ -101,6 +139,7 @@
   .routes th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11.5px;
                text-transform: uppercase; letter-spacing: .05em; padding: 4px 8px; border-bottom: 1px solid var(--line); }
   .routes td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: baseline; }
+  .spacer { flex: 1; }
 </style>
 </head>
 <body>
@@ -108,19 +147,29 @@
   <header>
     <h1>the <code>cosmonic:notify</code> playground</h1>
     <p class="sub">
-      Every control below maps to one field of the WIT record a component sends.
-      Fire a notification, then watch the answer come back — either as the return
-      value of a blocking <code>request</code>, or later from the
-      <code>events.pull</code> queue.
+      Pick a message type, tweak anything you like, and fire it. Every control maps
+      to one field of the WIT record a component sends, and the exact JSON going over
+      the wire is shown as you edit.
     </p>
   </header>
 
   <div id="caps" class="banner"><span class="dot"></span><div>Checking what this machine can do…</div></div>
 
+  <div class="card" style="margin-bottom:16px">
+    <h2>message types <span class="h2note">— click the name to load it into the form, or <b>▶</b> to send it straight away</span></h2>
+    <div id="types"></div>
+    <div class="note">
+      These are the shapes <code>cosmonic:notify</code> can express. Loading one fills in
+      every control below, so the fastest way to build your own is to start from the
+      closest one and edit it. In the source they are a single array at the top of
+      <code>src/index.html</code> — add an object, get a button.
+    </div>
+  </div>
+
   <div class="grid">
     <div>
       <div class="card">
-        <h2>the notification</h2>
+        <h2>the notification <span class="h2note" id="editing"></span></h2>
         <div class="field">
           <label for="title">title <span style="opacity:.7">— required; the host rejects an empty one</span></label>
           <input id="title" type="text" value="Deploy build 4271 to production?">
@@ -145,6 +194,21 @@
           <div class="field">
             <label for="timeout">timeout-ms</label>
             <input id="timeout" type="text" placeholder="30000">
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="dtKind">body click (<code>default-target</code>)</label>
+            <select id="dtKind">
+              <option value="">host default — deep-link to this workload</option>
+              <option value="callback">callback — just tell the component</option>
+              <option value="url">url</option>
+              <option value="deep-link">deep-link</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="dtValue">target value</label>
+            <input id="dtValue" type="text" placeholder="https://… or workloads/default/x">
           </div>
         </div>
         <div class="note">
@@ -185,7 +249,7 @@
         <div class="field">
           <label><input type="checkbox" id="useInput"> ask for a typed reply</label>
         </div>
-        <div class="row" id="inputFields" style="display:none">
+        <div class="row3" id="inputFields" style="display:none">
           <div class="field">
             <label for="inputId">input id</label>
             <input id="inputId" type="text" value="reason">
@@ -193,6 +257,10 @@
           <div class="field">
             <label for="inputLabel">button label</label>
             <input id="inputLabel" type="text" value="Reply">
+          </div>
+          <div class="field">
+            <label for="inputPlaceholder">placeholder</label>
+            <input id="inputPlaceholder" type="text" placeholder="why?">
           </div>
         </div>
         <div class="note">
@@ -220,8 +288,17 @@
         </div>
       </div>
 
+      <div class="card">
+        <h2>what goes over the wire <span class="h2note">— the JSON this page POSTs</span></h2>
+        <pre class="wire" id="wire"></pre>
+        <div class="btns" style="margin-top:10px">
+          <button class="ghost small" id="copyWire">copy JSON</button>
+          <button class="ghost small" id="copyCurl">copy as curl</button>
+        </div>
+      </div>
+
       <div class="card" id="simCard" style="display:none">
-        <h2>simulate a click <span style="text-transform:none;letter-spacing:0">(mock backend)</span></h2>
+        <h2>simulate a click <span class="h2note">(mock backend)</span></h2>
         <p class="sub" style="font-size:13px;margin:0 0 12px">
           This daemon runs <code>COSMONIC_NOTIFY_BACKEND=mock</code>, so nothing appears on
           screen. Answer on the user's behalf from a terminal to exercise the round trip:
@@ -243,7 +320,7 @@
           <div class="field"><label for="simAction">action / input id</label><input id="simAction" type="text" value="approve"></div>
           <div class="field"><label for="simText">typed text</label><input id="simText" type="text" value="looks good"></div>
         </div>
-        <pre id="simCmd" style="font-family:var(--mono);font-size:11.5px;white-space:pre-wrap;word-break:break-all;background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:10px;margin:0"></pre>
+        <pre class="wire" id="simCmd"></pre>
         <div class="btns" style="margin-top:10px"><button class="ghost small" id="copyCmd">copy</button></div>
         <div class="note">
           <b>Why can't this page just do it?</b> The daemon's control API listens on a unix
@@ -256,8 +333,12 @@
       </div>
 
       <div class="card">
-        <h2>feed</h2>
-        <div class="log" id="log"><div style="color:var(--muted)">nothing yet.</div></div>
+        <h2>feed <span class="h2note" id="feedCount"></span></h2>
+        <div class="btns" style="margin-bottom:12px">
+          <button class="ghost small" id="clearLog">clear</button>
+          <span class="chip" id="pollChip">events.pull every 1s</span>
+        </div>
+        <div class="log" id="log"><div class="empty" style="color:var(--muted)">nothing yet.</div></div>
       </div>
     </div>
   </div>
@@ -325,54 +406,343 @@
 </div>
 
 <script>
+// ═══════════════════════════════════════════════════════════════════════════
+//  MESSAGE TYPES — the whole customisation surface of this page.
+//
+//  Add a button by adding an object to this array. `n` is LITERALLY the JSON
+//  body this page POSTs to /post or /request, so whatever you write here is
+//  exactly what the component hands to `cosmonic:notify`. Nothing else in the
+//  file needs to change.
+//
+//    label  what the button says
+//    hint   the one-line description under it
+//    send   which verb the ▶ button uses: "post" (fire and forget) or
+//           "request" (block until the user answers)
+//    group  "shape" (things you would actually send) or
+//           "refused" (things the HOST rejects — the validation demo)
+//    n      the notification, field for field:
+//             title         required, non-empty after trimming
+//             body          free text
+//             urgency       "low" | "normal" | "critical"
+//             actions       [{ id, label, target, value? }]
+//                           target: "callback" | "url" | "deep-link"
+//             input         { id, label, placeholder? }  — inline text reply
+//             default_target { target, value? }          — body-click behaviour
+//             tag           reuse to REPLACE your previous notification
+//             timeout_ms    auto-dismiss hint; also bounds how long request blocks
+// ═══════════════════════════════════════════════════════════════════════════
+const MESSAGE_TYPES = [
+  {
+    id: "plain",
+    label: "Plain toast",
+    hint: "title + body, nothing else",
+    group: "shape",
+    send: "post",
+    n: {
+      title: "Build 4271 finished",
+      body: "staging is green · 3 commits since the last release",
+      urgency: "normal",
+      actions: [],
+    },
+  },
+  {
+    id: "low",
+    label: "Low urgency",
+    hint: "quiet: no sound, no interruption",
+    group: "shape",
+    send: "post",
+    n: {
+      title: "Cache warmed",
+      body: "18,400 objects · nothing needs you",
+      urgency: "low",
+      actions: [],
+    },
+  },
+  {
+    id: "critical",
+    label: "Critical alert",
+    hint: "stays on screen until answered",
+    group: "shape",
+    send: "post",
+    n: {
+      title: "Certificate expires in 6 hours",
+      body: "api.example.com · renewal has failed twice",
+      urgency: "critical",
+      actions: [{ id: "renew", label: "Renew now", target: "callback" }],
+    },
+  },
+  {
+    id: "decision",
+    label: "Two-button decision",
+    hint: "approve / deny — critical, so it survives until answered",
+    group: "shape",
+    send: "request",
+    n: {
+      title: "Deploy build 4271 to production?",
+      body: "staging is green · 3 commits since the last release",
+      // Critical because it is a QUESTION. On GNOME a normal-urgency toast is
+      // settled the moment its banner fades — the user would never get to
+      // answer. Information can be `normal`; anything you wait on cannot.
+      urgency: "critical",
+      actions: [
+        { id: "approve", label: "Approve", target: "callback" },
+        { id: "deny", label: "Deny", target: "callback" },
+      ],
+      timeout_ms: 60000,
+    },
+  },
+  {
+    id: "url",
+    label: "Button opens a URL",
+    hint: "action target: url — http/https only",
+    group: "shape",
+    send: "post",
+    n: {
+      title: "Release notes are up",
+      body: "v2.7.0 · 41 changes",
+      urgency: "normal",
+      actions: [{ id: "read", label: "Read them", target: "url", value: "https://cosmonic.com" }],
+    },
+  },
+  {
+    id: "deeplink",
+    label: "Button opens Desktop",
+    hint: "action target: deep-link, a relative app route",
+    group: "shape",
+    send: "post",
+    n: {
+      title: "notify-playground is running",
+      body: "open its page in Cosmonic Desktop",
+      urgency: "normal",
+      actions: [{
+        id: "open",
+        label: "Open workload",
+        target: "deep-link",
+        value: "workloads/default/notify-playground",
+      }],
+    },
+  },
+  {
+    id: "reply",
+    label: "Inline reply",
+    hint: "a real text box on Windows and macOS",
+    group: "shape",
+    send: "request",
+    n: {
+      title: "Why was the rollout stopped?",
+      body: "your answer goes straight back to the component",
+      urgency: "critical",
+      actions: [],
+      input: { id: "reason", label: "Reply", placeholder: "error budget burned…" },
+      timeout_ms: 60000,
+    },
+  },
+  {
+    id: "reply-buttons",
+    label: "Reply + buttons",
+    hint: "text box and actions on one notification",
+    group: "shape",
+    send: "request",
+    n: {
+      title: "Incident 4102 needs an owner",
+      body: "take it, or say who should",
+      urgency: "critical",
+      actions: [
+        { id: "take", label: "I'll take it", target: "callback" },
+        { id: "later", label: "Not now", target: "callback" },
+      ],
+      input: { id: "suggest", label: "Suggest someone", placeholder: "who?" },
+      timeout_ms: 60000,
+    },
+  },
+  {
+    id: "body-click",
+    label: "Body click → URL",
+    hint: "default-target: clicking the toast itself",
+    group: "shape",
+    send: "post",
+    n: {
+      title: "Docs updated",
+      body: "click this notification, not a button",
+      urgency: "normal",
+      actions: [],
+      default_target: { target: "url", value: "https://cosmonic.com/docs" },
+    },
+  },
+  {
+    id: "tag",
+    label: "Replace by tag",
+    hint: "send twice — the second replaces the first",
+    group: "shape",
+    send: "post",
+    n: {
+      title: "Uploading… 60%",
+      body: "same tag replaces in place instead of stacking",
+      urgency: "low",
+      actions: [],
+      tag: "upload",
+    },
+  },
+  {
+    id: "expires",
+    label: "Expires on its own",
+    hint: "4s timeout → a terminal `expired` response",
+    group: "shape",
+    send: "post",
+    n: {
+      title: "This one answers itself",
+      body: "ignore it — expired arrives in the feed in about 4 seconds",
+      urgency: "low",
+      actions: [],
+      timeout_ms: 4000,
+    },
+  },
+  {
+    id: "truncated",
+    label: "Too many buttons",
+    hint: "6 actions → the host truncates to the platform max",
+    group: "shape",
+    send: "post",
+    n: {
+      title: "Pick a region",
+      body: "the host drops the extras and logs what it dropped",
+      urgency: "normal",
+      actions: [
+        { id: "use1", label: "us-east-1", target: "callback" },
+        { id: "use2", label: "us-west-2", target: "callback" },
+        { id: "euw1", label: "eu-west-1", target: "callback" },
+        { id: "euc1", label: "eu-central-1", target: "callback" },
+        { id: "apse1", label: "ap-southeast-1", target: "callback" },
+        { id: "apne1", label: "ap-northeast-1", target: "callback" },
+      ],
+    },
+  },
+
+  // ---- What the HOST refuses. These are supposed to come back as errors. ----
+  {
+    id: "no-title",
+    label: "Empty title",
+    hint: "rejected: a notification must have a title",
+    group: "refused",
+    send: "post",
+    n: { title: "", body: "there is no title on this one", urgency: "normal", actions: [] },
+  },
+  {
+    id: "bad-url",
+    label: "javascript: URL",
+    hint: "rejected: url targets are http/https only",
+    group: "refused",
+    send: "post",
+    n: {
+      title: "Non-http target",
+      body: "the host rejects the scheme, not the component",
+      urgency: "normal",
+      actions: [{ id: "x", label: "Click", target: "url", value: "javascript:alert(1)" }],
+    },
+  },
+  {
+    id: "traversal",
+    label: "Traversing deep link",
+    hint: "rejected: a route may not climb out of the app",
+    group: "refused",
+    send: "post",
+    n: {
+      title: "Escaping route",
+      body: "../.. is how a route leaves the app's routing table",
+      urgency: "normal",
+      actions: [{ id: "x", label: "Click", target: "deep-link", value: "../../etc/passwd" }],
+    },
+  },
+  {
+    id: "dupe",
+    label: "Duplicate button ids",
+    hint: "rejected: action ids must be unique",
+    group: "refused",
+    send: "post",
+    n: {
+      title: "Two buttons, one id",
+      body: "the response could not say which was pressed",
+      urgency: "normal",
+      actions: [
+        { id: "same", label: "First", target: "callback" },
+        { id: "same", label: "Second", target: "callback" },
+      ],
+    },
+  },
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+
 const $ = (id) => document.getElementById(id);
 let lastId = null;
 let maxActions = 3;
-
-function logEntry(cls, title, detail) {
-  const box = $("log");
-  if (box.firstChild && box.firstChild.style) box.innerHTML = "";
-  const el = document.createElement("div");
-  el.className = "entry " + cls;
-  const t = new Date().toLocaleTimeString();
-  el.innerHTML = `<div class="t">${t}</div><div>${title}</div>` +
-    (detail ? `<div style="color:var(--muted)">${detail}</div>` : "");
-  box.prepend(el);
-}
+let entryCount = 0;
+const MAX_ENTRIES = 250;
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// ---- the feed ------------------------------------------------------------
+// The placeholder is removed by CLASS, not by "is there a first child" — the
+// earlier version tested `box.firstChild.style`, which is truthy for every
+// entry it had already written, so each new line wiped the feed clean.
+function logEntry(cls, title, detail) {
+  const box = $("log");
+  const placeholder = box.querySelector(".empty");
+  if (placeholder) placeholder.remove();
+  const el = document.createElement("div");
+  el.className = "entry " + cls;
+  const t = new Date().toLocaleTimeString();
+  el.innerHTML = '<div class="t">' + t + "</div><div>" + title + "</div>" +
+    (detail ? '<div class="d">' + detail + "</div>" : "");
+  box.prepend(el);
+  entryCount++;
+  while (box.children.length > MAX_ENTRIES) box.lastChild.remove();
+  $("feedCount").textContent = "— " + entryCount + (entryCount === 1 ? " entry" : " entries");
+  return el;
+}
+
+$("clearLog").onclick = () => {
+  entryCount = 0;
+  $("log").innerHTML = '<div class="empty" style="color:var(--muted)">nothing yet.</div>';
+  $("feedCount").textContent = "";
+};
+
 // ---- buttons editor ------------------------------------------------------
 function addActionRow(id, label, target, value) {
   const rows = $("actions");
   const row = document.createElement("div");
   row.className = "action-row";
-  row.innerHTML = `
-    <input type="text" class="a-id" placeholder="id" value="${esc(id || "")}">
-    <input type="text" class="a-label" placeholder="label" value="${esc(label || "")}">
-    <select class="a-target">
-      <option value="callback">callback</option>
-      <option value="url">url</option>
-      <option value="deep-link">deep-link</option>
-    </select>
-    <input type="text" class="a-value" placeholder="https://… or workloads/default/x" value="${esc(value || "")}">
-    <button class="ghost small a-del">remove</button>`;
+  row.innerHTML =
+    '<input type="text" class="a-id" placeholder="id" value="' + esc(id || "") + '">' +
+    '<input type="text" class="a-label" placeholder="label" value="' + esc(label || "") + '">' +
+    '<select class="a-target">' +
+      '<option value="callback">callback</option>' +
+      '<option value="url">url</option>' +
+      '<option value="deep-link">deep-link</option>' +
+    "</select>" +
+    '<input type="text" class="a-value" placeholder="https://… or workloads/default/x" value="' + esc(value || "") + '">' +
+    '<button class="ghost small a-del">remove</button>';
   row.querySelector(".a-target").value = target || "callback";
-  row.querySelector(".a-del").onclick = () => row.remove();
+  row.querySelector(".a-del").onclick = () => { row.remove(); renderWire(); };
+  row.querySelectorAll("input, select").forEach((el) => {
+    el.addEventListener("input", renderWire);
+    el.addEventListener("change", renderWire);
+  });
   rows.appendChild(row);
 }
-$("addAction").onclick = () => addActionRow("", "", "callback", "");
-addActionRow("approve", "Approve", "callback", "");
-addActionRow("deny", "Deny", "callback", "");
+$("addAction").onclick = () => { addActionRow("", "", "callback", ""); renderWire(); };
 
 $("useInput").onchange = (e) => {
   $("inputFields").style.display = e.target.checked ? "grid" : "none";
+  renderWire();
 };
 
 // ---- request building ----------------------------------------------------
+// build() is the inverse of load(): the form in, the wire payload out. Keeping
+// them symmetrical is what lets a message type round-trip through the form.
 function build() {
   const actions = [...document.querySelectorAll(".action-row")].map((r) => {
     const target = r.querySelector(".a-target").value;
@@ -393,6 +763,13 @@ function build() {
   };
   if ($("useInput").checked) {
     req.input = { id: $("inputId").value.trim(), label: $("inputLabel").value.trim() };
+    const ph = $("inputPlaceholder").value.trim();
+    if (ph) req.input.placeholder = ph;
+  }
+  const dt = $("dtKind").value;
+  if (dt) {
+    req.default_target = { target: dt };
+    if (dt !== "callback") req.default_target.value = $("dtValue").value.trim();
   }
   const tag = $("tag").value.trim();
   if (tag) req.tag = tag;
@@ -401,51 +778,159 @@ function build() {
   return req;
 }
 
+// load() fills every control from a message type, so the loaded button and the
+// form always agree — edit from there.
+function load(n) {
+  $("title").value = n.title ?? "";
+  $("body").value = n.body ?? "";
+  $("urgency").value = n.urgency ?? "normal";
+  $("tag").value = n.tag ?? "";
+  $("timeout").value = n.timeout_ms ?? "";
+
+  $("dtKind").value = n.default_target ? n.default_target.target : "";
+  $("dtValue").value = (n.default_target && n.default_target.value) || "";
+
+  $("actions").innerHTML = "";
+  (n.actions || []).forEach((a) => addActionRow(a.id, a.label, a.target, a.value));
+
+  const hasInput = !!n.input;
+  $("useInput").checked = hasInput;
+  $("inputFields").style.display = hasInput ? "grid" : "none";
+  if (hasInput) {
+    $("inputId").value = n.input.id ?? "";
+    $("inputLabel").value = n.input.label ?? "";
+    $("inputPlaceholder").value = n.input.placeholder ?? "";
+  }
+  renderWire();
+}
+
+function renderWire() {
+  $("wire").textContent = JSON.stringify(build(), null, 2);
+}
+
+// ---- the message-type buttons -------------------------------------------
+function renderTypes() {
+  const host = $("types");
+  host.innerHTML = "";
+  const groups = [
+    ["shape", "shapes you would actually send"],
+    ["refused", "what the host refuses — validation runs in the daemon, not here"],
+  ];
+  for (const [group, heading] of groups) {
+    const items = MESSAGE_TYPES.filter((m) => m.group === group);
+    if (!items.length) continue;
+    const h = document.createElement("div");
+    h.className = "grouphead";
+    h.textContent = heading;
+    host.appendChild(h);
+    const gridEl = document.createElement("div");
+    gridEl.className = "types";
+    items.forEach((m) => {
+      const el = document.createElement("div");
+      el.className = "preset" + (group === "refused" ? " refused" : "");
+      el.dataset.id = m.id;
+      el.innerHTML =
+        '<button class="p-load" title="load this into the form"><b>' + esc(m.label) +
+        "</b><span>" + esc(m.hint) + "</span></button>" +
+        '<button class="p-send" title="send it now with ' + esc(m.send) + '">▶</button>';
+      el.querySelector(".p-load").onclick = () => select(m);
+      el.querySelector(".p-send").onclick = (e) => {
+        select(m);
+        send("/" + m.send, e.currentTarget);
+      };
+      gridEl.appendChild(el);
+    });
+    host.appendChild(gridEl);
+  }
+}
+
+function select(m) {
+  load(m.n);
+  document.querySelectorAll(".preset").forEach((p) =>
+    p.classList.toggle("active", p.dataset.id === m.id));
+  $("editing").textContent = "— editing “" + m.label + "”";
+}
+
+// ---- sending -------------------------------------------------------------
 async function send(route, btn) {
   const req = build();
+  const wasDisabled = btn.disabled;
   btn.disabled = true;
   const started = Date.now();
+  let waiting = null;
+  if (route === "/request") {
+    waiting = logEntry("wait", "<b>request</b> — waiting for a human…",
+      "this HTTP call stays open until the user answers, or it times out");
+  }
   try {
-    const r = await fetch(route, { method: "POST", body: JSON.stringify(req) });
+    const r = await fetch(route, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(req),
+    });
     const d = await r.json();
+    if (waiting) waiting.remove();
     if (d.error) {
-      logEntry("err", `<b>${route}</b> refused`, esc(d.error));
+      logEntry("err", "<b>" + esc(route) + "</b> refused", esc(d.error));
     } else if (d.id !== undefined) {
       lastId = d.id;
       $("simId").value = d.id;
-      logEntry("ok", `<b>post</b> → notification <b>#${d.id}</b>`,
+      logEntry("ok", "<b>post</b> → notification <b>#" + d.id + "</b>",
         "the answer will appear here when events.pull picks it up");
     } else if (d.response) {
       const secs = ((Date.now() - started) / 1000).toFixed(1);
-      logEntry("rsp", `<b>request</b> → ${describe(d.response)}`,
-        `the call blocked for ${secs}s waiting for a human`);
+      logEntry("rsp", "<b>request</b> → " + describe(d.response),
+        "the call blocked for " + secs + "s waiting for a human");
+    } else {
+      logEntry("err", "unexpected reply", esc(JSON.stringify(d)));
     }
   } catch (e) {
+    if (waiting) waiting.remove();
     logEntry("err", "the request failed", esc(e.message));
   } finally {
-    btn.disabled = false;
+    btn.disabled = wasDisabled;
   }
 }
 
 function describe(r) {
   switch (r.kind) {
     case "activated": return "<b>activated</b> — the user clicked the notification body";
-    case "action": return `<b>action</b> — the user pressed <code>${esc(r.id)}</code>`;
-    case "reply": return `<b>reply</b> — <code>${esc(r.id)}</code>: “${esc(r.text)}”`;
+    case "action": return "<b>action</b> — the user pressed <code>" + esc(r.id) + "</code>";
+    case "reply": return "<b>reply</b> — <code>" + esc(r.id) + "</code>: “" + esc(r.text) + "”";
     case "dismissed": return "<b>dismissed</b> — the user swiped it away";
     case "expired": return "<b>expired</b> — nobody answered, or it was withdrawn";
     default: return esc(JSON.stringify(r));
   }
 }
 
-$("post").onclick = (e) => send("/post", e.target);
-$("request").onclick = (e) => send("/request", e.target);
-$("close").onclick = async (e) => {
+$("post").onclick = (e) => send("/post", e.currentTarget);
+$("request").onclick = (e) => send("/request", e.currentTarget);
+$("close").onclick = async () => {
   if (lastId === null) return logEntry("err", "nothing to close", "post something first");
-  const r = await fetch("/close", { method: "POST", body: JSON.stringify({ id: lastId }) });
-  const d = await r.json();
-  logEntry(d.error ? "err" : "ok", `<b>close</b> #${lastId}`,
-    d.error ? esc(d.error) : "its pending response resolves as expired");
+  try {
+    const r = await fetch("/close", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: lastId }),
+    });
+    const d = await r.json();
+    logEntry(d.error ? "err" : "ok", "<b>close</b> #" + lastId,
+      d.error ? esc(d.error) : "its pending response resolves as expired");
+  } catch (e) {
+    logEntry("err", "close failed", esc(e.message));
+  }
+};
+
+$("copyWire").onclick = () => {
+  navigator.clipboard?.writeText($("wire").textContent);
+  logEntry("ok", "JSON copied", "");
+};
+$("copyCurl").onclick = () => {
+  const cmd = "curl -sS -H 'Host: notify.localhost' -H 'content-type: application/json' \\\n" +
+    "  -X POST --data '" + JSON.stringify(build()) + "' \\\n" +
+    "  http://127.0.0.1:8200/post";
+  navigator.clipboard?.writeText(cmd);
+  logEntry("ok", "curl copied", "the same notification, from a terminal");
 };
 
 // ---- the target menu ------------------------------------------------------
@@ -489,7 +974,8 @@ document.querySelectorAll("[data-test]").forEach((el) => {
   el.onclick = async () => {
     const t = TARGET_TESTS[el.dataset.test];
     try {
-      const r = await fetch("/post", { method: "POST", body: JSON.stringify(t.req) });
+      const r = await fetch("/post", { method: "POST",
+        headers: { "content-type": "application/json" }, body: JSON.stringify(t.req) });
       const d = await r.json();
       if (t.refused) {
         if (d.error) logEntry("ok", "<b>refused</b>, as it must be", esc(d.error));
@@ -526,7 +1012,13 @@ $("copyCmd").onclick = () => {
   navigator.clipboard?.writeText($("simCmd").textContent);
   logEntry("ok", "command copied", "run it in a terminal, then watch the feed");
 };
-renderSimCmd();
+
+// keep the wire payload live as you edit
+["title", "body", "urgency", "tag", "timeout", "dtKind", "dtValue",
+ "inputId", "inputLabel", "inputPlaceholder"].forEach((id) => {
+  $(id).addEventListener("input", renderWire);
+  $(id).addEventListener("change", renderWire);
+});
 
 // ---- capabilities + the pull loop ---------------------------------------
 async function loadCaps() {
@@ -538,32 +1030,69 @@ async function loadCaps() {
     const chips = [
       ["action buttons", c.actions], ["inline reply", c.inlineReply],
       ["urgency", c.urgency], ["stays in the centre", c.persistent],
-    ].map(([n, on]) => `<span class="chip ${on ? "on" : "off"}">${on ? "✓" : "✕"} ${n}</span>`).join("");
+    ].map(([n, on]) => '<span class="chip ' + (on ? "on" : "off") + '">' +
+      (on ? "✓" : "✕") + " " + n + "</span>").join("");
     b.className = "banner" + (c.available ? "" : " warn");
     b.innerHTML =
-      `<span class="dot ${c.available ? "ok" : "warn"}"></span><div>` +
+      '<span class="dot ' + (c.available ? "ok" : "warn") + '"></span><div>' +
       (c.available
-        ? `<div><b>This machine can show notifications</b> — backend <code>${esc(c.backend)}</code></div>`
-        : `<div><b>Nothing can be shown on this machine right now.</b> Every send will return <code>unavailable</code>. That is a normal state — a headless Linux session, macOS authorization declined, or a dev daemon with no bundle identity.</div>`) +
-      `<div class="chips" style="margin-top:8px">${chips}</div></div>`;
+        ? "<div><b>This machine can show notifications</b> — backend <code>" +
+          esc(c.backend) + "</code></div>"
+        : unavailableHelp()) +
+      '<div class="chips" style="margin-top:8px">' + chips + "</div></div>";
     if (c.backend === "mock") $("simCard").style.display = "";
   } catch (e) {
-    $("caps").innerHTML = `<span class="dot warn"></span><div>could not read /capabilities: ${esc(e.message)}</div>`;
+    $("caps").innerHTML = '<span class="dot warn"></span><div>could not read /capabilities: ' +
+      esc(e.message) + "</div>";
   }
 }
 
-// events.pull(0) — a non-blocking poll of THIS COMPONENT's queue. The queue is
-// per component, not per instance, which is why an answer to something posted
+// `capabilities()` reports THAT nothing can be shown, not why — the WIT record
+// has no reason field. These are the three things that actually cause it, in
+// the order worth checking, so the page is useful rather than just honest.
+function unavailableHelp() {
+  return "<div><b>Nothing can be shown on this machine right now.</b> Every send returns " +
+    "<code>unavailable</code> until one of these is fixed:</div>" +
+    "<ol style='margin:8px 0 0;padding-left:20px;font-size:13px;color:var(--muted)'>" +
+    "<li><b>The Labs flag is off.</b> Settings → Labs → <i>Settings → Notifications</i>, " +
+    "then <b>restart the daemon</b> — it is read once at start.</li>" +
+    "<li><b>macOS, unbundled daemon.</b> <code>cosmonicd</code> needs a bundle identity " +
+    "before it may touch <code>UNUserNotificationCenter</code>. A dev daemon, or one run " +
+    "straight out of <code>Contents/Resources</code>, has none.</li>" +
+    "<li><b>No notification service.</b> A headless Linux session, or macOS " +
+    "authorization declined.</li></ol>" +
+    "<div style='margin-top:8px;font-size:13px;color:var(--muted)'>To exercise the whole " +
+    "round trip anyway, start the daemon with " +
+    "<code>COSMONIC_NOTIFY_BACKEND=mock</code> and answer from a terminal.</div>";
+}
+
+// events.pull(0) — a non-blocking poll of THIS WORKLOAD's queue. The queue is
+// per workload, not per instance, which is why an answer to something posted
 // by a long-gone invocation still finds its way here.
+let draining = false;
 async function drain() {
-  try {
-    const d = await (await fetch("/events")).json();
-    (d.events || []).forEach((e) =>
-      logEntry("rsp", `<b>#${e.id}</b> → ${describe(e.response)}`, "delivered via events.pull"));
-  } catch (_) { /* the daemon may be restarting; try again next tick */ }
+  if (!draining) {
+    draining = true;
+    try {
+      const d = await (await fetch("/events")).json();
+      (d.events || []).forEach((e) =>
+        logEntry("rsp", "<b>#" + e.id + "</b> → " + describe(e.response),
+          "delivered via events.pull"));
+      $("pollChip").textContent = "events.pull every 1s";
+    } catch (_) {
+      // the daemon may be restarting, or a blocking `request` may be holding
+      // the only instance in the pool — say so instead of going quiet.
+      $("pollChip").textContent = "events.pull — no answer, retrying";
+    } finally {
+      draining = false;
+    }
+  }
   setTimeout(drain, 1000);
 }
 
+renderTypes();
+select(MESSAGE_TYPES.find((m) => m.id === "decision") || MESSAGE_TYPES[0]);
+renderSimCmd();
 loadCaps();
 drain();
 </script>

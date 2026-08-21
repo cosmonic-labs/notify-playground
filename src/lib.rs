@@ -11,7 +11,7 @@
 //!   POST /post           fire-and-forget; returns the notification id
 //!   POST /request        fire and WAIT for the user's answer
 //!   POST /close          withdraw a notification by id
-//!   GET  /events         drain the responses queued for this component
+//!   GET  /events         drain the responses queued for this workload
 
 mod notify;
 

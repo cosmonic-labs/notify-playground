@@ -23,7 +23,11 @@ spec:
 
   components:
     - name: notify-playground
-      image: oci.localhost:8298/notify-playground:0.1.1
+      # `oci-registry.localhost:8200` rather than `oci.localhost:<port>`: both
+      # names reach Desktop's built-in registry, but only this one carries the
+      # plain-HTTP mirror rule Desktop installs for itself. Pull the other name
+      # and the daemon tries TLS and fails with `InvalidContentType`.
+      image: oci-registry.localhost:8200/notify-playground:0.2.0
       localResources:
         # The playground dials nothing. Deny-all is both the default and the
         # honest posture for a sample.
