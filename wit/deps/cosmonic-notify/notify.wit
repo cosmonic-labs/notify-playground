@@ -1,55 +1,29 @@
-// cosmonic:notify — OS-native notifications and calls-to-action for
-// WebAssembly components. Design: `docs/NOTIFY.md`.
-//
-// A component imports `notifier` to raise a toast and `events` to collect the
-// user's answer. The host (cosmonicd) satisfies both, translating the
-// platform-neutral `notification` record into the native surface for the
-// machine it runs on — WinRT toasts, `UNUserNotificationCenter` alerts, or
-// freedesktop D-Bus notifications — and pumping the user's response back.
-//
-// Three things are deliberately NOT the component's problem:
-//   * WHICH backend runs. Routing is host configuration (`notify.yaml`), so a
-//     non-OS channel can be added without touching this package.
-//   * WHETHER the platform can honour every field. `capabilities` reports the
-//     truth and the host degrades gracefully (see `docs/NOTIFY.md` §5.5).
-//   * ATTRIBUTION. The host stamps "who is talking" itself; a component cannot
-//     impersonate another component or the product.
-//
-// Every notification resolves to EXACTLY ONE terminal `response`. That
-// invariant is owned by the host service, not by any backend, so it holds even
-// when one notification is fanned out to several channels.
-package cosmonic:notify@0.1.0;
+/// Host-routed notifications and user responses. The host owns attribution,
+/// reports platform capabilities, and adapts unsupported fields. Each
+/// notification has exactly one terminal response, including across fan-out.
+package cosmonic:notify@0.2.0;
 
 interface types {
   /// What happens when the user activates an action (or the notification body).
   variant action-target {
-    /// Focus/launch Cosmonic Desktop at an app route, e.g.
-    /// "workloads/default/checkout". The host opens
-    /// `cosmonic://navigate/<route>`; the app acts only on routes it
-    /// recognises (`workloads/<ns>/<name>`, `settings`, `logs`,
-    /// `academy/...`, `launchpad/...`) and anything else just focuses the
-    /// window. The route MUST be relative — no scheme, host, `..`, or
-    /// leading `//`.
+    /// Open a relative Desktop route through cosmonic://navigate/<route>.
+    /// Reject schemes, hosts, .., and leading //. Unknown routes only focus the window.
     deep-link(string),
-    /// Open a URL in the default browser. The host accepts `http`/`https`
-    /// only; anything else is rejected with `notify-error::invalid`.
+    /// Open an HTTP or HTTPS URL. Other schemes return invalid.
     url(string),
-    /// Take no host-side action — just deliver the response back to the
-    /// sending component (via `request`'s return value or `events.pull`).
+    /// Return the response to the sender without a host-side action.
     callback,
   }
 
   record action {
-    /// Stable id echoed back in `response::action`. Must be non-empty and
-    /// unique within one notification.
+    /// Nonempty action id, unique within the notification and echoed in responses.
     id: string,
     /// Button label shown to the user.
     label: string,
     target: action-target,
   }
 
-  /// Inline text reply. Platforms without inline reply degrade to an ordinary
-  /// button carrying the same id (see `platform-capabilities::inline-reply`).
+  /// Inline reply. Unsupported platforms use a button with the same id.
   record text-input {
     id: string,
     /// Button label, e.g. "Reply".
@@ -57,30 +31,27 @@ interface types {
     placeholder: option<string>,
   }
 
-  enum urgency { low, normal, critical }
+  enum urgency {
+    low,
+    normal,
+    critical,
+  }
 
   record notification {
     /// Required, non-empty after trimming.
     title: string,
     body: string,
     urgency: urgency,
-    /// Truncated to `platform-capabilities::max-actions` (and to 8 in any
-    /// case); the host logs what it dropped rather than failing the call.
+    /// Truncate to the smaller of max-actions and 8; log dropped actions.
     actions: list<action>,
     input: option<text-input>,
-    /// What clicking the notification body does. `none` = the host's default,
-    /// a deep-link to the sending workload's page in Desktop.
+    /// Body-click target. None opens the sending workload's Desktop page.
     default-target: option<action-target>,
-    /// Reusing a tag REPLACES your prior notification with the same tag, in
-    /// place. Scoped per workload — one workload can never overwrite
-    /// another's toast.
+    /// Replaces this workload's notification with the same tag.
     tag: option<string>,
-    /// Auto-dismiss hint in ms. `none` = the host default. Also bounds how
-    /// long `request` will block. Best-effort: some platforms ignore it, in
-    /// which case the host still synthesizes `expired` at the deadline.
-    /// `0` is treated the same as `none` (following the freedesktop
-    /// convention where zero means "don't expire on your own") — the host
-    /// still applies its default deadline, never "expire immediately".
+    /// Dismissal hint and request deadline in milliseconds. None or zero uses
+    /// the host default. The host expires requests at the deadline even when
+    /// the platform ignores dismissal; a host ceiling always bounds the wait.
     timeout-ms: option<u32>,
   }
 
@@ -95,36 +66,27 @@ interface types {
     reply(tuple<string, string>),
     /// The user explicitly dismissed it.
     dismissed,
-    /// Timed out, was cleared without interaction, or was withdrawn with
-    /// `close`. Also what a component receives for anything still in flight
-    /// when the host shuts down.
+    /// Expired, withdrawn, cleared, or still pending at host shutdown.
     expired,
   }
 
   variant notify-error {
-    /// Not permitted. Either notifications are revoked for this workload in
-    /// Desktop settings, or the host could not establish who is calling —
-    /// which happens if a component calls after its own workload stopped.
+    /// Workload lacks permission or the host cannot identify the caller.
     denied,
-    /// Rate limit exceeded. Reserved — v1 counts and warns, never rejects.
+    /// Workload or host rate limit exceeded. Retry as the hourly budget refills.
     throttled,
-    /// No notification service is reachable: a headless Linux session, macOS
-    /// authorization refused, or a daemon with no bundle identity.
-    /// `capabilities().available` reports this ahead of time.
+    /// No reachable notification service. capabilities.available reports this.
     unavailable,
-    /// Malformed request — empty title, duplicate action id, non-http URL,
-    /// absolute or traversing deep-link route.
+    /// Malformed title, action ids, URL, or relative route, with detail.
     invalid(string),
     /// Backend/platform failure, with detail.
     platform(string),
   }
 
   record platform-capabilities {
-    /// False when nothing can be displayed at all. Every `post`/`request` will
-    /// return `unavailable`; check this instead of discovering it per-call.
+    /// Whether notifications can be displayed. False makes post/request unavailable.
     available: bool,
-    /// Stable key of the primary backend: "os", "mock", or "none".
-    /// With multi-route fan-out this describes the PRIMARY route only.
+    /// Primary backend key, such as os, mock, or none; identifies only the primary route.
     backend: string,
     actions: bool,
     inline-reply: bool,
@@ -137,46 +99,25 @@ interface types {
 
 /// Raising notifications.
 interface notifier {
-  use types.{notification, notification-id, response, notify-error,
-             platform-capabilities};
+  use types.{notification, notification-id, response, notify-error, platform-capabilities};
 
-  /// What this host/platform/session can actually do, right now. Cheap and
-  /// side-effect free; safe to call on every invocation.
-  capabilities: func() -> platform-capabilities;
+  /// Current platform capabilities. Cheap and side-effect free.
+  capabilities: async func() -> platform-capabilities;
 
-  /// Fire-and-forget. Returns as soon as the notification is handed to the
-  /// backend. The user's answer arrives later via `events.pull`.
-  post: func(n: notification) -> result<notification-id, notify-error>;
+  /// Queue a notification and return its id. Responses arrive through events.pull.
+  post: async func(n: notification) -> result<notification-id, notify-error>;
 
-  /// Raise the notification and WAIT for the user's terminal response.
-  ///
-  /// Returns exactly once, with `activated`, `action`, `reply`, `dismissed`,
-  /// or `expired`. The wait is bounded by `notification.timeout-ms`, else the
-  /// host's configured default, and in all cases by a host ceiling — a
-  /// component can never block forever on a user who walked away.
-  ///
-  /// Note: this is a plain blocking call rather than `future<response>`
-  /// deliberately, so that P2 guests in every language can use it. See
-  /// `docs/NOTIFY.md` §3.1.
-  request: func(n: notification) -> result<response, notify-error>;
+  /// Wait for exactly one terminal response, bounded by timeout-ms or the
+  /// host default and always by the host ceiling.
+  request: async func(n: notification) -> result<response, notify-error>;
 
-  /// Withdraw a notification this component posted. The pending response
-  /// resolves as `expired`. Withdrawing an unknown or already-terminal id is
-  /// a no-op, not an error.
-  close: func(id: notification-id) -> result<_, notify-error>;
+  /// Withdraw a notification and resolve its response as expired.
+  /// Unknown or terminal ids are a no-op.
+  close: async func(id: notification-id) -> result<_, notify-error>;
 }
 
-/// Collecting responses to `post`ed notifications.
-///
-/// The queue is per WORKLOAD, not per component instance, so a response to a
-/// notification raised by one invocation can be drained by the next — the only
-/// thing that works for request-scoped components, where the invocation that
-/// posted is gone long before anyone clicks.
-///
-/// Workload rather than component because the host has no stable component
-/// *name* to key on — only a per-instance id that changes on restart. The
-/// consequence: components of the same multi-component workload share one
-/// queue, one rate budget, and one entry in Settings.
+/// Responses to posted notifications, queued per workload across invocations.
+/// Components in one workload share the queue, rate budget, and settings.
 interface events {
   use types.{notification-id, response, notify-error};
 
@@ -185,26 +126,22 @@ interface events {
     response: response,
   }
 
-  /// Drain this component's pending responses.
-  ///
-  /// Returns as soon as at least one event is queued, or an empty list once
-  /// `max-wait-ms` elapses. `max-wait-ms` of 0 polls without blocking. The
-  /// host bounds the wait regardless of what is asked for.
-  ///
-  /// Events are delivered at-most-once: what this call returns is removed from
-  /// the queue. The queue is bounded — a component that never drains it will
-  /// lose its OLDEST events first (the host logs the overflow).
-  pull: func(max-wait-ms: u32) -> result<list<event>, notify-error>;
+  /// Drain queued responses, waiting at most max-wait-ms and the host ceiling.
+  /// Zero polls. Returns an empty list on timeout. Delivery is at-most-once;
+  /// overflow discards the oldest events and is logged.
+  pull: async func(max-wait-ms: u32) -> result<list<event>, notify-error>;
 }
 
-/// What a component imports to raise notifications and read the answers.
+/// Notification sending and response collection.
 world notify-consumer {
+  import types;
   import notifier;
   import events;
 }
-
-/// What the host exports to satisfy `notify-consumer`.
+/// Host-provided notification interfaces.
 world host {
+  import types;
+
   export notifier;
   export events;
 }
