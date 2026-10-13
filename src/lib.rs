@@ -1,7 +1,9 @@
 //! notify-playground — a hands-on tour of `cosmonic:notify`.
 //!
 //! Serves a single page that lets you compose any notification the interface
-//! can express, fire it, and watch the user's answer come back. It exists to
+//! can express, fire it, and watch the user's answer come back. It is a WASI
+//! 0.3 (p3) component: `cosmonic:notify@0.2.0` is all `async func`, and the
+//! host serves those only to a component on the async export path. It exists to
 //! be read as much as run: every host call it makes is in `notify.rs`, in
 //! about forty lines, and the page explains what each control maps to.
 //!
@@ -15,54 +17,78 @@
 
 mod notify;
 
-use std::io::Read;
-
-use wasmcloud_component::http;
+use wasip3::http::types::{ErrorCode, Method, Request, Response};
+use wasip3::http_compat::http_into_wasi_response;
 
 struct Playground;
 
-http::export!(Playground);
+// `wasi:http/handler@0.3.0` — the p3 async handler. It has to be p3: the
+// notify calls below are `async func`, and the host only drives those for a
+// component whose export runs on the async path.
+wasip3::http::service::export!(Playground);
 
-impl http::Server for Playground {
-    fn handle(
-        request: http::IncomingRequest,
-    ) -> http::Result<http::Response<impl http::OutgoingBody>> {
-        let path = request.uri().path().to_string();
-        let method = request.method().clone();
-        let (_parts, body) = request.into_parts();
+impl wasip3::exports::http::handler::Guest for Playground {
+    async fn handle(request: Request) -> Result<Response, ErrorCode> {
+        let method = request.get_method();
+        let path = request
+            .get_path_with_query()
+            .unwrap_or_default()
+            .split('?')
+            .next()
+            .unwrap_or_default()
+            .to_string();
 
-        let response = match (method.as_str(), path.as_str()) {
-            ("GET", "/") => html(include_str!("index.html")),
-            ("GET", "/capabilities") => json(200, notify::capabilities_json()),
-            ("GET", "/events") => json(200, notify::events_json()),
-            ("POST", "/post") => with_body(body, notify::post_json),
-            ("POST", "/request") => with_body(body, notify::request_json),
-            ("POST", "/close") => with_body(body, notify::close_json),
+        let response = match (&method, path.as_str()) {
+            (Method::Get, "/") => html(include_str!("index.html")),
+            (Method::Get, "/capabilities") => json(200, notify::capabilities_json().await),
+            (Method::Get, "/events") => json(200, notify::events_json().await),
+            (Method::Post, "/post") => match read_body(request).await {
+                Ok(text) => {
+                    let (status, payload) = notify::post_json(&text).await;
+                    json(status, payload)
+                }
+                Err(resp) => resp,
+            },
+            (Method::Post, "/request") => match read_body(request).await {
+                Ok(text) => {
+                    let (status, payload) = notify::request_json(&text).await;
+                    json(status, payload)
+                }
+                Err(resp) => resp,
+            },
+            (Method::Post, "/close") => match read_body(request).await {
+                Ok(text) => {
+                    let (status, payload) = notify::close_json(&text).await;
+                    json(status, payload)
+                }
+                Err(resp) => resp,
+            },
             _ => json(404, r#"{"error":"no such route"}"#.to_string()),
         };
-        Ok(response)
+        http_into_wasi_response(response)
     }
 }
 
-/// Read the request body and hand it to a handler that answers with JSON.
-fn with_body(
-    body: http::IncomingBody,
-    handler: fn(&str) -> (u16, String),
-) -> http::Response<String> {
-    let mut body = body;
-    let mut bytes = Vec::new();
-    if let Err(e) = body.read_to_end(&mut bytes) {
-        return json(
+/// Read the whole request body as UTF-8, or the 400 to answer with instead.
+///
+/// A p3 body is a `stream<u8>` plus a trailers future. Drain the stream,
+/// settle the trailers, then tell the host we are done with the body — each
+/// handle closed in order, none dropped while the runtime is still waiting
+/// on it.
+async fn read_body(request: Request) -> Result<String, http::Response<String>> {
+    let (done_tx, done_rx) = wasip3::wit_future::new(|| Ok(()));
+    let (stream, trailers) = Request::consume_body(request, done_rx);
+    let bytes = stream.collect().await;
+    let trailers = trailers.await;
+    let _ = done_tx.write(Ok(())).await;
+    if let Err(e) = trailers {
+        return Err(json(
             400,
-            error_json(&format!("could not read the request body: {e}")),
-        );
+            error_json(&format!("could not read the request body: {e:?}")),
+        ));
     }
-    let text = match String::from_utf8(bytes) {
-        Ok(t) => t,
-        Err(_) => return json(400, error_json("the request body was not valid UTF-8")),
-    };
-    let (status, payload) = handler(&text);
-    json(status, payload)
+    String::from_utf8(bytes)
+        .map_err(|_| json(400, error_json("the request body was not valid UTF-8")))
 }
 
 fn json(status: u16, body: String) -> http::Response<String> {

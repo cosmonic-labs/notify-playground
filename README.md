@@ -30,7 +30,7 @@ Then push it to Desktop's built-in registry and apply the manifest:
 ```sh
 SOCK="$COSMONIC_STATE_DIR/cosmonicd.sock"     # `cosmonicd paths` prints it
 
-wash oci push --insecure oci-registry.localhost:8200/notify-playground:0.2.0 \
+wash oci push --insecure oci-registry.localhost:8200/notify-playground:0.3.0 \
   target/wasm32-wasip2/release/notify_playground.wasm
 
 curl --unix-socket "$SOCK" -X POST -H 'content-type: application/json' \
@@ -285,8 +285,17 @@ workload.yaml   the manifest. One `hostInterfaces` entry is the whole ask.
 ```
 
 Bindings come from `wit_bindgen::generate!` over `wit/`. The HTTP export is
-generated separately by `wasmcloud-component`'s own macro, which is why
+generated separately by the `wasip3` crate's own macro, which is why
 `wit/world.wit` declares only the imports.
+
+### Why this is a p3 component
+
+`cosmonic:notify@0.2.0` declares every function `async func`, and Desktop
+implements them as concurrent host functions. Those only run for a component
+whose export is on the async path — `wasi:http/handler@0.3.0`. A p2
+`incoming-handler` component that imports notify 0.2.0 starts fine and then
+fails on its first notify call. So the HTTP side is p3, every notify binding is
+an `async fn` you `.await`, and the manifest declares `interfaces: [handler]`.
 
 ---
 
@@ -301,6 +310,6 @@ and is enforced in the daemon — the component's next `post` returns `denied`.
 ## See also
 
 - [`docs/NOTIFY.md`](https://github.com/cosmonic/desktop/blob/main/docs/NOTIFY.md) — the design, the platform matrix, and the constraints behind each decision
-- [`cosmonic:notify@0.1.0`](wit/deps/cosmonic-notify/notify.wit) — the interface, commented
+- [`cosmonic:notify@0.2.0`](wit/deps/cosmonic-notify/notify.wit) — the interface, commented
 
 Apache-2.0.

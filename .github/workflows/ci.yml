@@ -28,12 +28,12 @@ jobs:
       # claims to. Assert the imports rather than trusting that it compiled.
       - name: verify the component imports cosmonic:notify
         run: |
-          curl -sSfL https://github.com/bytecodealliance/wasm-tools/releases/download/v1.235.0/wasm-tools-1.235.0-x86_64-linux.tar.gz \
-            | tar xz --strip-components=1 -C /usr/local/bin wasm-tools-1.235.0-x86_64-linux/wasm-tools
+          curl -sSfL https://github.com/bytecodealliance/wasm-tools/releases/download/v1.243.0/wasm-tools-1.243.0-x86_64-linux.tar.gz \
+            | tar xz --strip-components=1 -C /usr/local/bin wasm-tools-1.243.0-x86_64-linux/wasm-tools
           WIT=$(wasm-tools component wit target/wasm32-wasip2/release/notify_playground.wasm)
-          echo "$WIT" | grep -q 'import cosmonic:notify/notifier@0.1.0' || { echo "::error::notifier import missing"; exit 1; }
-          echo "$WIT" | grep -q 'import cosmonic:notify/events@0.1.0'   || { echo "::error::events import missing"; exit 1; }
-          echo "$WIT" | grep -q 'export wasi:http/incoming-handler'      || { echo "::error::http export missing"; exit 1; }
+          echo "$WIT" | grep -q 'import cosmonic:notify/notifier@0.2.0' || { echo "::error::notifier import missing"; exit 1; }
+          echo "$WIT" | grep -q 'import cosmonic:notify/events@0.2.0'   || { echo "::error::events import missing"; exit 1; }
+          echo "$WIT" | grep -q 'export wasi:http/handler@0.3.0'         || { echo "::error::http export missing"; exit 1; }
           echo "imports verified"
 
   manifests:
